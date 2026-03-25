@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Variety - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Edit Variety</h1>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-group">
+        <label for="name">Name *</label>
+        <input type="text" id="name" name="name" required maxlength="200" value="{{ variety.name }}">
+    </div>
+
+    <div class="form-group">
+        <label for="plant_family">Plant Family</label>
+        <input type="text" id="plant_family" name="plant_family" maxlength="100" value="{{ variety.plant_family or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="outdoor_spacing_cm">Outdoor Spacing (cm)</label>
+        <input type="number" id="outdoor_spacing_cm" name="outdoor_spacing_cm" min="0" value="{{ variety.outdoor_spacing_cm or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="indoor_pod_size_cm">Indoor Pod Size (cm)</label>
+        <input type="number" id="indoor_pod_size_cm" name="indoor_pod_size_cm" min="0" value="{{ variety.indoor_pod_size_cm or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label for="days_to_harvest">Days to Harvest</label>
+        <input type="number" id="days_to_harvest" name="days_to_harvest" min="0" value="{{ variety.days_to_harvest or '' }}">
+    </div>
+
+    <div class="form-group">
+        <label>Optimal Sowing Months</label>
+        <div class="checkbox-grid">
+            {% for i in range(1, 13) %}
+            <label class="checkbox-label">
+                <input type="checkbox" name="sowing_months" value="{{ i }}" {% if i in sowing_months %}checked{% endif %}>
+                {{ ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][i-1] }}
+            </label>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary">Update Variety</button>
+        <a href="{{ url_for('varieties_list') }}" class="btn">Cancel</a>
+    </div>
+</form>
+{% endblock %}

@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Varieties - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Plant Varieties</h1>
+    <a href="{{ url_for('variety_create') }}" class="btn btn-primary">Add Variety</a>
+</div>
+
+{% if varieties %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Family</th>
+                    <th>Spacing (cm)</th>
+                    <th>Indoor Pod (cm)</th>
+                    <th>Days to Harvest</th>
+                    <th>Sowing Months</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for variety in varieties %}
+                <tr>
+                    <td><a href="{{ url_for('variety_detail', id=variety.id) }}">{{ variety.name }}</a></td>
+                    <td>{{ variety.plant_family or '-' }}</td>
+                    <td>{{ variety.outdoor_spacing_cm or '-' }}</td>
+                    <td>{{ variety.indoor_pod_size_cm or '-' }}</td>
+                    <td>{{ variety.days_to_harvest or '-' }}</td>
+                    <td>
+                        {% if variety.optimal_sowing_months %}
+                            {{ variety.get_sowing_months_list() | join(', ') }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td class="actions">
+                        <a href="{{ url_for('variety_edit', id=variety.id) }}" class="btn btn-small">Edit</a>
+                        <form action="{{ url_for('variety_delete', id=variety.id) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete this variety?');">
+                            <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p class="empty-state">No varieties added yet. <a href="{{ url_for('variety_create') }}">Add your first variety</a>.</p>
+{% endif %}
+{% endblock %}

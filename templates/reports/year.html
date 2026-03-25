@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block title %}Yearly Report {{ year }} - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-actions">
+        <h1>Yearly Report: {{ year }}</h1>
+        <div class="action-buttons">
+            <a href="{{ url_for('export_year', year=year) }}" class="btn btn-secondary">Export CSV</a>
+        </div>
+    </div>
+</div>
+
+<section class="report-summary">
+    <h2>Summary</h2>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>{{ total_varieties }}</h3>
+            <p>Unique Varieties</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ total_quantity }}</h3>
+            <p>Total Plants</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ plantings|length }}</h3>
+            <p>Planting Records</p>
+        </div>
+    </div>
+</section>
+
+<section class="report-details">
+    <h2>Plantings</h2>
+    {% if plantings %}
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Variety</th>
+                        <th>Quantity</th>
+                        <th>Harvest Period</th>
+                        <th>Harvested Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for planting in plantings %}
+                    <tr>
+                        {% set harvests = planting.harvests %}
+                        <td>{{ planting.planting_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ planting.variety.name }}</td>
+                        <td>{{ planting.quantity }}</td>
+                        <td>
+                            {% if harvests %}
+                                {% set first = harvests|sort(attribute='first_harvest_date')|first %}
+                                {{ first.first_harvest_date.strftime('%b %d') }}
+                                {% if first.last_harvest_date %}
+                                    - {{ first.last_harvest_date.strftime('%b %d') }}
+                                {% endif %}
+                            {% else %}
+                                Not harvested
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if harvests %}
+                                {% set total = 0 %}
+                                {% for h in harvests %}
+                                    {% if h.quantity_harvested %}
+                                        {% set q = h.quantity_harvested|extract_number %}
+                                        {% set total = total + q %}
+                                    {% endif %}
+                                {% endfor %}
+                                {{ total }}
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="empty-state">No plantings recorded for {{ year }}.</p>
+    {% endif %}
+</section>
+{% endblock %}

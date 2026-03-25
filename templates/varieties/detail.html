@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}{{ variety.name }} - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-actions">
+        <h1>{{ variety.name }}</h1>
+        <div class="action-buttons">
+            <a href="{{ url_for('variety_edit', id=variety.id) }}" class="btn">Edit</a>
+            <form action="{{ url_for('variety_delete', id=variety.id) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete this variety and all its plantings?');">
+                <button type="submit" class="btn btn-danger">Delete</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="two-column detail-grid">
+    <section class="detail-info">
+        <h2>Details</h2>
+        <table class="detail-table">
+            <tr>
+                <th>Plant Family</th>
+                <td>{{ variety.plant_family or 'Not set' }}</td>
+            </tr>
+            <tr>
+                <th>Outdoor Spacing</th>
+                <td>{{ variety.outdoor_spacing_cm if variety.outdoor_spacing_cm else 'Not set' }} cm</td>
+            </tr>
+            <tr>
+                <th>Indoor Pod Size</th>
+                <td>{{ variety.indoor_pod_size_cm if variety.indoor_pod_size_cm else 'Not set' }} cm</td>
+            </tr>
+            <tr>
+                <th>Days to Harvest</th>
+                <td>{{ variety.days_to_harvest if variety.days_to_harvest else 'Not set' }}</td>
+            </tr>
+            <tr>
+                <th>Sowing Months</th>
+                <td>
+                    {% if variety.optimal_sowing_months %}
+                        {{ variety.get_sowing_months_list() | map('int') | sort | map('string') | join(', ') }}
+                    {% else %}
+                        Not set
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+
+        <div class="action-section">
+            <a href="{{ url_for('planting_create') }}?variety_id={{ variety.id }}" class="btn btn-primary">Add Planting for This Variety</a>
+        </div>
+    </section>
+
+    <section class="plantings-history">
+        <h2>Planting History</h2>
+        {% if plantings %}
+            <ul class="planting-list">
+                {% for planting in plantings %}
+                <li>
+                    <a href="{{ url_for('planting_detail', id=planting.id) }}">
+                        <strong>{{ planting.year }}</strong>
+                        {{ planting.quantity }} plant(s)
+                        <span class="date">{{ planting.planting_date.strftime('%b %d') }}</span>
+                    </a>
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="empty-state">No plantings recorded for this variety yet.</p>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

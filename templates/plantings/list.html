@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+
+{% block title %}Plantings - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Planting Journal</h1>
+    <a href="{{ url_for('planting_create') }}" class="btn btn-primary">Add Planting</a>
+</div>
+
+<form method="GET" class="filter-form">
+    <label for="year">Filter by year:</label>
+    <select name="year" id="year" onchange="this.form.submit()">
+        <option value="">All Years</option>
+        {% for y in years %}
+        <option value="{{ y }}" {% if selected_year == y %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+    </select>
+</form>
+
+{% if plantings %}
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Variety</th>
+                    <th>Quantity</th>
+                    <th>Year</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for planting in plantings %}
+                <tr>
+                    <td>{{ planting.planting_date.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                        <a href="{{ url_for('variety_detail', id=planting.variety.id) }}">{{ planting.variety.name }}</a>
+                    </td>
+                    <td>{{ planting.quantity }}</td>
+                    <td>{{ planting.year }}</td>
+                    <td class="notes-cell">{{ planting.notes or '-' }}</td>
+                    <td class="actions">
+                        <a href="{{ url_for('planting_detail', id=planting.id) }}" class="btn btn-small">Details</a>
+                        <a href="{{ url_for('planting_edit', id=planting.id) }}" class="btn btn-small">Edit</a>
+                        <form action="{{ url_for('planting_delete', id=planting.id) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete this planting?');">
+                            <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p class="empty-state">No plantings recorded yet. <a href="{{ url_for('planting_create') }}">Add your first planting</a>.</p>
+{% endif %}
+{% endblock %}

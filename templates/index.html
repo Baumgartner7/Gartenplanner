@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Gartenplanner - Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h1>Garden Dashboard</h1>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>{{ variety_count }}</h3>
+            <p>Varieties</p>
+            <a href="{{ url_for('varieties_list') }}" class="btn btn-small">Manage</a>
+        </div>
+        <div class="stat-card">
+            <h3>{{ planting_count }}</h3>
+            <p>Plantings</p>
+            <a href="{{ url_for('plantings_list') }}" class="btn btn-small">View All</a>
+        </div>
+        <div class="stat-card">
+            <h3>{{ harvest_count }}</h3>
+            <p>Harvests</p>
+        </div>
+    </div>
+
+    <div class="two-column">
+        <section class="recent-section">
+            <h2>Recent Varieties</h2>
+            {% if recent_varieties %}
+                <ul class="item-list">
+                    {% for variety in recent_varieties %}
+                        <li>
+                            <a href="{{ url_for('variety_detail', id=variety.id) }}">{{ variety.name }}</a>
+                            <span class="meta">{{ variety.plant_family or 'No family' }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <a href="{{ url_for('varieties_list') }}" class="btn">View All Varieties</a>
+            {% else %}
+                <p class="empty-state">No varieties yet. <a href="{{ url_for('variety_create') }}">Add your first variety</a>.</p>
+            {% endif %}
+        </section>
+
+        <section class="recent-section">
+            <h2>Recent Plantings</h2>
+            {% if recent_plantings %}
+                <ul class="item-list">
+                    {% for planting in recent_plantings %}
+                        <li>
+                            <a href="{{ url_for('planting_detail', id=planting.id) }}">
+                                {{ planting.variety.name }} ({{ planting.year }})
+                            </a>
+                            <span class="meta">{{ planting.planting_date.strftime('%b %d, %Y') }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+                <a href="{{ url_for('plantings_list') }}" class="btn">View All Plantings</a>
+            {% else %}
+                <p class="empty-state">No plantings yet. <a href="{{ url_for('planting_create') }}">Record your first planting</a>.</p>
+            {% endif %}
+        </section>
+    </div>
+
+    <section class="quick-actions">
+        <h2>Quick Actions</h2>
+        <div class="action-grid">
+            <a href="{{ url_for('variety_create') }}" class="btn btn-primary">Add Variety</a>
+            <a href="{{ url_for('planting_create') }}" class="btn btn-primary">Add Planting</a>
+            <a href="{{ url_for('report_year', year=datetime.now().year) }}" class="btn">View {{ datetime.now().year }} Report</a>
+            <a href="{{ url_for('export_year', year=datetime.now().year) }}" class="btn btn-secondary">Export CSV</a>
+        </div>
+    </section>
+</div>
+{% endblock %}
