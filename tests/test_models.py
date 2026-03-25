@@ -159,3 +159,71 @@ def test_cascade_delete(app):
         assert Variety.query.get(variety.id) is None
         assert Planting.query.get(planting.id) is None
         assert Harvest.query.get(harvest.id) is None
+
+def test_get_sowing_months_list_with_invalid_json(app):
+    """Test get_sowing_months_list() with invalid JSON string."""
+    with app.app_context():
+        variety = Variety(name="Test Invalid JSON")
+        variety.optimal_sowing_months = "[1, 2, 3"  # Invalid JSON - missing closing bracket
+        assert variety.get_sowing_months_list() == []
+
+        variety.optimal_sowing_months = "not a json string"
+        assert variety.get_sowing_months_list() == []
+
+def test_harvest_validate_dates_with_none_planting(app):
+    """Test Harvest.validate_dates() when planting query returns None."""
+    with app.app_context():
+        harvest = Harvest(
+            planting_id=99999,  # Non-existent planting
+            first_harvest_date=date(2024, 7, 20)
+        )
+        # Should return True because planting is None (no constraint violation)
+        assert harvest.validate_dates() == True
+
+def test_variety_to_dict_with_none_created_at(app):
+    """Test Variety.to_dict() when created_at is None."""
+    with app.app_context():
+        variety = Variety(
+            name="Test No Created At",
+            plant_family="Solanceae"
+        )
+        result = variety.to_dict()
+        assert result['created_at'] is None
+        assert result['name'] == variety.name
+
+def test_harvest_validate_dates_planting_before_first_harvest(app):
+    """Test Harvest.validate_dates() ensures all harvest dates are after planting."""
+    with app.app_context():
+        variety = Variety(name="Test Harvest Dates")
+        db.session.add(variety)
+        db.session.commit()
+
+        planting = Planting(
+            variety_id=variety.id,
+            year=2024,
+            quantity=5,
+            planting_date=date(2024, 6, 1)
+        )
+        db.session.add(planting)
+        db.session.commit()
+
+        # Test with last_harvest_date on same day as planting (should fail)
+        harvest = Harvest(
+            planting_id=planting.id,
+            first_harvest_date=date(2024, 6, 1),
+            last_harvest_date=date(2024, 6, 1)
+        )
+        assert harvest.validate_dates() == False
+
+        # Test with last_harvest_date before planting
+        harvest.first_harvest_date = date(2024, 7, 1)
+        harvest.last_harvest_date = date(2024, 5, 15)
+        assert harvest.validate_dates() == False
+
+def test_validate_sowing_months_with_empty_list(app):
+    """Test validate_sowing_months() with empty list returns True."""
+    with app.app_context():
+        variety = Variety(name="Test Empty Months")
+        variety.set_sowing_months_list([])
+        # Empty list should be valid (no months to validate)
+        assert variety.validate_sowing_months() == True
