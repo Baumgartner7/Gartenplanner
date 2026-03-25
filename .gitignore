@@ -48,6 +48,8 @@ env/
 htmlcov/
 .tox/
 .nox/
+coverage_output.txt
+coverage_results.txt
 
 # Flask
 instance/
