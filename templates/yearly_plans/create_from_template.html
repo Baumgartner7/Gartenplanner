@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block title %}Create Plan from Previous Year - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Create Plan from Previous Year</h1>
+    <p class="subtitle">Copy planting entries from a previous year to create plan entries for {{ target_year }}.</p>
+</div>
+
+<form method="POST" class="form">
+    <div class="form-group">
+        <label for="source_year">Source Year:</label>
+        <select name="source_year" id="source_year" onchange="if (this.value) { window.location.href = '?source_year=' + this.value; }">
+            <option value="">Select a year...</option>
+            {% for y in available_years %}
+            <option value="{{ y }}" {% if source_year == y %}selected{% endif %}>{{ y }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    {% if source_year and plantings %}
+    <div class="planting-list">
+        <h3>Select Plantings from {{ source_year }} to Copy:</h3>
+        <div class="table-responsive">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Select</th>
+                        <th>Variety</th>
+                        <th>Quantity</th>
+                        <th>Planting Date</th>
+                        <th>Family</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for planting in plantings %}
+                    <tr>
+                        <td>
+                            <input type="checkbox" name="selected_plantings" value="{{ planting.id }}" id="planting_{{ planting.id }}">
+                        </td>
+                        <td>
+                            <label for="planting_{{ planting.id }}">
+                                {{ planting.variety.name }}
+                            </label>
+                        </td>
+                        <td>{{ planting.quantity }}</td>
+                        <td>{{ planting.planting_date.strftime('%Y-%m-%d') }}</td>
+                        <td>{{ planting.variety.plant_family or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="form-actions">
+        <button type="submit" class="btn btn-primary" {% if not source_year or not plantings %}disabled{% endif %}>
+            Create Plans from Selected Plantings
+        </button>
+        <a href="{{ url_for('plan_year', year=target_year) }}" class="btn btn-secondary">Cancel</a>
+    </div>
+</form>
+{% endblock %}

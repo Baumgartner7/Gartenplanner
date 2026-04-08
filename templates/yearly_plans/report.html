@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}Yearly Plan: {{ year }} - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div class="header-row">
+        <h1>Yearly Plan: {{ year }}</h1>
+        <div class="action-buttons">
+            <a href="{{ url_for('plan_create') }}?year={{ year }}" class="btn btn-primary">Add Plan Entry</a>
+            <a href="{{ url_for('plan_create_from_template', target_year=year) }}" class="btn btn-secondary">Create from Previous Year</a>
+            <a href="{{ url_for('report_year', year=year) }}" class="btn btn-secondary">ViewPlantings Report</a>
+        </div>
+    </div>
+</div>
+
+<div class="sort-controls">
+    <label>Sort by:</label>
+    <a href="?sort=date&year={{ year }}" class="btn btn-small {% if current_sort == 'date' or current_sort == '' %}active{% endif %}">Sowing Date</a>
+    <a href="?sort=family&year={{ year }}" class="btn btn-small {% if current_sort == 'family' %}active{% endif %}">Plant Family</a>
+</div>
+
+{% if plans %}
+    <div class="stats-bar">
+        <span>Total Entries: {{ distinct_varieties }} varieties</span>
+        <span>Total Planned Quantity: {{ total_quantity }}</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Variety</th>
+                    <th>Family</th>
+                    <th>Planned Quantity</th>
+                    <th>Planned Sowing Date</th>
+                    <th>Status</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for plan in plans %}
+                <tr>
+                    <td>{{ plan.variety.name }}</td>
+                    <td>{{ plan.variety.plant_family or '-' }}</td>
+                    <td>{{ plan.planned_quantity }}</td>
+                    <td>
+                        {% if plan.planned_sowing_date %}
+                            {{ plan.planned_sowing_date.strftime('%Y-%m-%d') }}
+                        {% else %}
+                            <span class="no-date">Not set</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <span class="status status-{{ plan.status }}">{{ plan.status }}</span>
+                    </td>
+                    <td class="notes-cell">{{ plan.notes or '-' }}</td>
+                    <td class="actions">
+                        <a href="{{ url_for('plan_edit', id=plan.id) }}" class="btn btn-small">Edit</a>
+                        <form action="{{ url_for('plan_delete', id=plan.id) }}" method="POST" class="inline-form" onsubmit="return confirm('Delete this plan entry?');">
+                            <button type="submit" class="btn btn-small btn-danger">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p class="empty-state">No plan entries for {{ year }}. <a href="{{ url_for('plan_create') }}?year={{ year }}">Add your first plan entry</a> or <a href="{{ url_for('plan_create_from_template', target_year=year) }}">create from previous year</a>.</p>
+{% endif %}
+{% endblock %}

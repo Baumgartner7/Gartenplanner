@@ -13,6 +13,7 @@
             <a href="{{ url_for('index') }}">Home</a>
             <a href="{{ url_for('varieties_list') }}">Varieties</a>
             <a href="{{ url_for('plantings_list') }}">Plantings</a>
+            <a href="{{ url_for('plan_year', year=datetime.now().year) }}">Plan {{ datetime.now().year }}</a>
             <a href="{{ url_for('report_year', year=datetime.now().year) }}">Report {{ datetime.now().year }}</a>
         </div>
     </nav>
