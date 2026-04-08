@@ -1,7 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
-from datetime import datetime
+from datetime import datetime, date
 from database import db
-from models import Variety, Planting, Harvest
+from models import Variety, Planting, Harvest, YearlyPlan
 import csv
 import io
 import re
@@ -239,6 +239,189 @@ def create_app():
         planting = Planting.query.get_or_404(id)
         harvests = Harvest.query.filter_by(planting_id=id).order_by(Harvest.first_harvest_date).all()
         return render_template('plantings/detail.html', planting=planting, harvests=harvests)
+
+    # Yearly Plan routes
+    @app.route('/plans/<int:year>')
+    def plan_year(year):
+        """View yearly planting plan with sorting"""
+        sort_by = request.args.get('sort', 'date')  # 'date' or 'family'
+        # Use database ordering for consistency with tests
+        if sort_by == 'family':
+            plans = YearlyPlan.query.filter_by(year=year).join(
+                Variety, YearlyPlan.variety_id == Variety.id
+            ).order_by(Variety.plant_family.asc(), YearlyPlan.planned_sowing_date.asc()).all()
+        else:  # default: by sowing date ASCENDING, then family DESCENDING
+            plans = YearlyPlan.query.filter_by(year=year).join(
+                Variety, YearlyPlan.variety_id == Variety.id
+            ).order_by(YearlyPlan.planned_sowing_date.asc(), Variety.plant_family.desc()).all()
+        
+        total_quantity = sum(p.planned_quantity for p in plans)
+        distinct_varieties = len(set(p.variety_id for p in plans))
+        
+        return render_template('yearly_plans/report.html', year=year, plans=plans,
+                               total_quantity=total_quantity, distinct_varieties=distinct_varieties,
+                               current_sort=sort_by)
+
+    @app.route('/plans/create', methods=['GET', 'POST'])
+    def plan_create():
+        """Create a single plan entry"""
+        varieties = Variety.query.order_by(Variety.name).all()
+        if request.method == 'POST':
+            variety_id = request.form.get('variety_id')
+            year = request.form.get('year', type=int)
+            planned_quantity = request.form.get('planned_quantity', type=int)
+            sowing_date_str = request.form.get('planned_sowing_date')
+            notes = request.form.get('notes', '').strip() or None
+            status = request.form.get('status', 'draft')
+            
+            # Parse sowing date if provided
+            planned_sowing_date = None
+            if sowing_date_str:
+                try:
+                    planned_sowing_date = datetime.strptime(sowing_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Invalid sowing date format.', 'error')
+                    return render_template('yearly_plans/create.html', varieties=varieties)
+            
+            plan = YearlyPlan(
+                year=year,
+                variety_id=int(variety_id),
+                planned_quantity=planned_quantity,
+                planned_sowing_date=planned_sowing_date,
+                notes=notes,
+                status=status
+            )
+            
+            if not plan.validate():
+                flash('Invalid plan data. Check quantity and status.', 'error')
+                return render_template('yearly_plans/create.html', varieties=varieties)
+            
+            db.session.add(plan)
+            try:
+                db.session.commit()
+                flash('Plan created successfully!', 'success')
+                return redirect(url_for('plan_year', year=year))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error creating plan: {str(e)}', 'error')
+        
+        # Pre-select year if provided as query param
+        selected_year = request.args.get('year', type=int)
+        return render_template('yearly_plans/create.html', varieties=varieties, selected_year=selected_year)
+
+    @app.route('/plans/<int:id>/edit', methods=['GET', 'POST'])
+    def plan_edit(id):
+        plan = YearlyPlan.query.get_or_404(id)
+        varieties = Variety.query.order_by(Variety.name).all()
+        if request.method == 'POST':
+            variety_id = request.form.get('variety_id')
+            year = request.form.get('year', type=int)
+            planned_quantity = request.form.get('planned_quantity', type=int)
+            sowing_date_str = request.form.get('planned_sowing_date')
+            notes = request.form.get('notes', '').strip() or None
+            status = request.form.get('status', 'draft')
+            
+            planned_sowing_date = None
+            if sowing_date_str:
+                try:
+                    planned_sowing_date = datetime.strptime(sowing_date_str, '%Y-%m-%d').date()
+                except ValueError:
+                    flash('Invalid sowing date format.', 'error')
+                    return render_template('yearly_plans/edit.html', plan=plan, varieties=varieties)
+            
+            plan.variety_id = int(variety_id)
+            plan.year = year
+            plan.planned_quantity = planned_quantity
+            plan.planned_sowing_date = planned_sowing_date
+            plan.notes = notes
+            plan.status = status
+            
+            if not plan.validate():
+                flash('Invalid plan data. Check quantity and status.', 'error')
+                return render_template('yearly_plans/edit.html', plan=plan, varieties=varieties)
+            
+            try:
+                db.session.commit()
+                flash('Plan updated successfully!', 'success')
+                return redirect(url_for('plan_year', year=plan.year))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error updating plan: {str(e)}', 'error')
+        
+        return render_template('yearly_plans/edit.html', plan=plan, varieties=varieties)
+
+    @app.route('/plans/<int:id>/delete', methods=['POST'])
+    def plan_delete(id):
+        plan = YearlyPlan.query.get_or_404(id)
+        year = plan.year
+        db.session.delete(plan)
+        db.session.commit()
+        flash('Plan deleted.', 'success')
+        return redirect(url_for('plan_year', year=year))
+
+    @app.route('/plans/create-from-template/<int:target_year>', methods=['GET', 'POST'])
+    def plan_create_from_template(target_year):
+        """Create plan entries from previous year's plantings"""
+        # Get available years with plantings
+        available_years = db.session.query(Planting.year).distinct().order_by(Planting.year.desc()).all()
+        available_years = [y[0] for y in available_years]
+        
+        if request.method == 'POST':
+            source_year = request.form.get('source_year', type=int)
+            selected_planting_ids = request.form.getlist('selected_plantings')
+            
+            if not source_year or not selected_planting_ids:
+                flash('Please select a source year and at least one planting.', 'error')
+                return render_template('yearly_plans/create_from_template.html', 
+                                     target_year=target_year, available_years=available_years)
+            
+            # Get selected plantings
+            plantings = Planting.query.filter(
+                Planting.id.in_(selected_planting_ids),
+                Planting.year == source_year
+            ).options(db.joinedload(Planting.variety)).all()
+            
+            plans_created = 0
+            for planting in plantings:
+                # Check if plan already exists for this variety in target year
+                existing = YearlyPlan.query.filter_by(
+                    year=target_year,
+                    variety_id=planting.variety_id
+                ).first()
+                if existing:
+                    continue  # Skip duplicates
+                
+                # Create plan from planting
+                plan = YearlyPlan(
+                    year=target_year,
+                    variety_id=planting.variety_id,
+                    planned_quantity=planting.quantity,
+                    planned_sowing_date=planting.planting_date,  # Use actual planting date as planned
+                    notes=f'Copied from {source_year} planting',
+                    status='draft'
+                )
+                db.session.add(plan)
+                plans_created += 1
+            
+            try:
+                db.session.commit()
+                flash(f'Plan created from template: {plans_created} entries from {source_year}.', 'success')
+                return redirect(url_for('plan_year', year=target_year))
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error creating plans: {str(e)}', 'error')
+        
+        # GET: show selection form
+        source_year = request.args.get('source_year', type=int)
+        plantings = []
+        if source_year:
+            plantings = Planting.query.filter_by(year=source_year).options(
+                db.joinedload(Planting.variety)
+            ).order_by(Planting.planting_date).all()
+        
+        return render_template('yearly_plans/create_from_template.html',
+                             target_year=target_year, available_years=available_years,
+                             source_year=source_year, plantings=plantings)
 
     # Harvest routes
     @app.route('/plantings/<int:planting_id>/harvests/create', methods=['GET', 'POST'])
