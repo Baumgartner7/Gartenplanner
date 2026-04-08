@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from database import db
 import json
 
@@ -16,6 +16,7 @@ class Variety(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     plantings = db.relationship('Planting', backref='variety', cascade='all, delete-orphan')
+    yearly_plans = db.relationship('YearlyPlan', backref='variety', cascade='all, delete-orphan')
 
     def validate_sowing_months(self):
         if not self.optimal_sowing_months:
@@ -89,6 +90,64 @@ class Planting(db.Model):
             'variety_name': self.variety.name if self.variety else None
         }
 
+
+class YearlyPlan(db.Model):
+    __tablename__ = 'yearly_plans'
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False)
+    variety_id = db.Column(db.Integer, db.ForeignKey('varieties.id'), nullable=False)
+    planned_quantity = db.Column(db.Integer, nullable=False)
+    planned_sowing_date = db.Column(db.Date, nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='draft')  # 'draft' or 'finalized'
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def validate(self):
+        """Validate the yearly plan entry"""
+        if not self.variety_id:
+            return False
+        if self.planned_quantity is None or self.planned_quantity <= 0:
+            return False
+        if self.status not in ['draft', 'finalized']:
+            return False
+        if self.planned_sowing_date:
+            if self.planned_sowing_date.year != self.year:
+                return False
+        # Check variety exists
+        variety = Variety.query.get(self.variety_id)
+        if not variety:
+            return False
+        return True
+
+    def compute_sowing_date_from_variety(self):
+        """Calculate a suggested sowing date based on variety's optimal months"""
+        variety = Variety.query.get(self.variety_id)
+        if not variety or not variety.optimal_sowing_months:
+            return None
+        months = variety.get_sowing_months_list()
+        if not months:
+            return None
+        # Use first optimal month, set to middle of month
+        first_month = sorted(months)[0]
+        # Use 15th of the month, or last day if month has fewer days
+        day = min(15, [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][first_month - 1])
+        return date(self.year, first_month, day)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'year': self.year,
+            'variety_id': self.variety_id,
+            'variety_name': self.variety.name if self.variety else None,
+            'plant_family': self.variety.plant_family if self.variety else None,
+            'planned_quantity': self.planned_quantity,
+            'planned_sowing_date': self.planned_sowing_date.isoformat() if self.planned_sowing_date else None,
+            'notes': self.notes,
+            'status': self.status,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
 
 class Harvest(db.Model):
     __tablename__ = 'harvests'
