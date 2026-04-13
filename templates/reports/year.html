@@ -8,6 +8,8 @@
         <h1>Yearly Report: {{ year }}</h1>
         <div class="action-buttons">
             <a href="{{ url_for('export_year', year=year) }}" class="btn btn-secondary">Export CSV</a>
+            <a href="{{ url_for('export_year_pdf', year=year) }}" class="btn btn-secondary">Export PDF</a>
+            <a href="{{ url_for('generate_pdf_report', year=year) }}" class="btn btn-primary">Generate & Save PDF</a>
         </div>
     </div>
 </div>

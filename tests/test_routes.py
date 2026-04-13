@@ -2,6 +2,7 @@ import pytest
 import sys
 import os
 from datetime import date
+from sqlalchemy.pool import StaticPool
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -14,23 +15,21 @@ def app():
     app.config['TESTING'] = True
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        'connect_args': {'check_same_thread': False},
+        'poolclass': StaticPool
+    }
     with app.app_context():
         db.create_all()
         yield app
-        db.drop_all()
+        db.session.remove()
+        db.engine.dispose()
 
 @pytest.fixture
 def client(app):
-    return app.test_client()
+    with app.test_client() as client:
+        yield client
 
-@pytest.fixture
-def init_data(app):
-    with app.app_context():
-        variety = Variety(name="Test Tomato", plant_family="Solanaceae")
-        variety.set_sowing_months_list([3, 4])
-        db.session.add(variety)
-        db.session.commit()
-        return variety.id
 
 def test_index_route(client):
     response = client.get('/')
@@ -297,15 +296,19 @@ def test_harvest_404(client):
     response = client.get('/harvests/99999')
     assert response.status_code == 404
 
-def test_variety_create_duplicate_name(client, init_data):
+def test_variety_create_duplicate_name(client, init_data, app):
     """Test creating variety with duplicate name fails."""
+    with app.app_context():
+        existing_variety = Variety.query.get(init_data)
+        duplicate_name = existing_variety.name
+
     response = client.post('/varieties/create', data={
-        'name': 'Test Tomato',  # Same as init_data
+        'name': duplicate_name,
         'plant_family': 'Solanaceae',
         'sowing_months': ['4', '5']
     }, follow_redirects=True)
     assert response.status_code == 200
-    assert b'already exists' in response.data or b'error' in response.data.lower()
+    assert b'already exists' in response.data.lower() or b'error' in response.data.lower()
 
 def test_planting_create_invalid_date(client, init_data):
     """Test planting creation with invalid date format."""

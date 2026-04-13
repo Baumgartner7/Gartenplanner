@@ -12,6 +12,7 @@ class Variety(db.Model):
     outdoor_spacing_cm = db.Column(db.Integer, nullable=True)
     indoor_pod_size_cm = db.Column(db.Integer, nullable=True)
     days_to_harvest = db.Column(db.Integer, nullable=True)
+    days_to_harvest_actual_avg = db.Column(db.Float, nullable=True)  # Calculated from actual harvests
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -52,6 +53,7 @@ class Variety(db.Model):
             'outdoor_spacing_cm': self.outdoor_spacing_cm,
             'indoor_pod_size_cm': self.indoor_pod_size_cm,
             'days_to_harvest': self.days_to_harvest,
+            'days_to_harvest_actual_avg': self.days_to_harvest_actual_avg,
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
@@ -149,6 +151,7 @@ class YearlyPlan(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None
         }
 
+
 class Harvest(db.Model):
     __tablename__ = 'harvests'
 
@@ -174,6 +177,12 @@ class Harvest(db.Model):
             return False
         return True
 
+    def get_days_to_harvest(self):
+        """Calculate days from planting to first harvest for this harvest record"""
+        if not self.planting or not self.first_harvest_date:
+            return None
+        return (self.first_harvest_date - self.planting.planting_date).days
+
     def to_dict(self):
         return {
             'id': self.id,
@@ -182,4 +191,71 @@ class Harvest(db.Model):
             'last_harvest_date': self.last_harvest_date.isoformat() if self.last_harvest_date else None,
             'quantity_harvested': self.quantity_harvested,
             'notes': self.notes
+        }
+
+
+class SavedReport(db.Model):
+    __tablename__ = 'saved_reports'
+
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False)
+    format = db.Column(db.String(10), nullable=False)  # 'pdf' or 'csv'
+    file_path = db.Column(db.String(500), nullable=True)  # Path to stored file if saved to disk
+    generated_at = db.Column(db.DateTime, default=datetime.utcnow)
+    notes = db.Column(db.Text, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'year': self.year,
+            'format': self.format,
+            'file_path': self.file_path,
+            'generated_at': self.generated_at.isoformat() if self.generated_at else None,
+            'notes': self.notes
+        }
+
+
+class NotificationSetting(db.Model):
+    __tablename__ = 'notification_settings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(200), nullable=False, unique=True)
+    days_before = db.Column(db.Integer, nullable=False, default=1)
+    enabled = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'email': self.email,
+            'days_before': self.days_before,
+            'enabled': self.enabled,
+            'created_at': self.created_at.isoformat() if self.created_at else None
+        }
+
+
+class NotificationLog(db.Model):
+    __tablename__ = 'notification_logs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    planting_id = db.Column(db.Integer, db.ForeignKey('plantings.id'), nullable=True)
+    yearly_plan_id = db.Column(db.Integer, db.ForeignKey('yearly_plans.id'), nullable=True)
+    notification_type = db.Column(db.String(50), nullable=False)  # 'sowing'
+    status = db.Column(db.String(20), nullable=False)  # 'sent' or 'failed'
+    error_message = db.Column(db.Text, nullable=True)
+    sent_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    planting = db.relationship('Planting', backref='notification_logs')
+    yearly_plan = db.relationship('YearlyPlan', backref='notification_logs')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'planting_id': self.planting_id,
+            'yearly_plan_id': self.yearly_plan_id,
+            'notification_type': self.notification_type,
+            'status': self.status,
+            'error_message': self.error_message,
+            'sent_at': self.sent_at.isoformat() if self.sent_at else None
         }

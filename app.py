@@ -1,21 +1,35 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, Response
-from datetime import datetime, date
+from flask import Flask, render_template, request, redirect, url_for, flash, Response, current_app
+from flask_mail import Mail
+from datetime import datetime, date, timedelta
 from database import db
-from models import Variety, Planting, Harvest, YearlyPlan
+from models import Variety, Planting, Harvest, YearlyPlan, SavedReport, NotificationSetting, NotificationLog
 import csv
 import io
 import re
+import os
+
+mail = Mail()
 
 def create_app():
     app = Flask(__name__)
     app.secret_key = 'gartenplanner-secret-key-change-in-production'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///garden.db'
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    # Flask-Mail configuration (use environment variables in production)
+    app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'localhost')
+    app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
+    app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'false').lower() == 'true'
+    app.config['MAIL_USE_SSL'] = os.getenv('MAIL_USE_SSL', 'false').lower() == 'true'
+    app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+    app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+    app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'gardener@example.com')
 
     # Make datetime available in all templates
     app.jinja_env.globals['datetime'] = datetime
 
     db.init_app(app)
+    mail.init_app(app)
 
     with app.app_context():
         db.create_all()
@@ -462,6 +476,8 @@ def create_app():
             db.session.add(harvest)
             try:
                 db.session.commit()
+                # Update the variety's harvest stats after adding a harvest
+                update_variety_harvest_stats(planting.variety_id)
                 flash('Harvest recorded successfully!', 'success')
                 return redirect(url_for('planting_detail', id=planting_id))
             except Exception as e:
@@ -505,6 +521,8 @@ def create_app():
 
             try:
                 db.session.commit()
+                # Update the variety's harvest stats after editing a harvest
+                update_variety_harvest_stats(planting.variety_id)
                 flash('Harvest updated successfully!', 'success')
                 return redirect(url_for('planting_detail', id=harvest.planting_id))
             except Exception as e:
@@ -517,8 +535,11 @@ def create_app():
     def harvest_delete(id):
         harvest = Harvest.query.get_or_404(id)
         planting_id = harvest.planting_id
+        variety_id = harvest.planting.variety_id
         db.session.delete(harvest)
         db.session.commit()
+        # Update the variety's harvest stats after deleting a harvest
+        update_variety_harvest_stats(variety_id)
         flash('Harvest deleted.', 'success')
         return redirect(url_for('planting_detail', id=planting_id))
 
@@ -567,8 +588,323 @@ def create_app():
             headers={'Content-Disposition': f'attachment;filename=garden_report_{year}.csv'}
         )
 
+    @app.route('/reports/<int:year>/export-pdf')
+    def export_year_pdf(year):
+        """Generate PDF report for a specific year"""
+        from weasyprint import HTML
+
+        plantings = Planting.query.filter_by(year=year).options(
+            db.joinedload(Planting.variety),
+            db.joinedload(Planting.harvests)
+        ).order_by(Planting.planting_date).all()
+
+        # Calculate summary stats
+        total_quantity = sum(p.quantity for p in plantings)
+        total_varieties = len(set(p.variety_id for p in plantings))
+
+        # Render HTML template for PDF
+        html_string = render_template(
+            'reports/pdf_year.html',
+            year=year,
+            plantings=plantings,
+            total_quantity=total_quantity,
+            total_varieties=total_varieties,
+            datetime=datetime
+        )
+
+        # Generate PDF
+        pdf = HTML(string=html_string).write_pdf()
+
+        # Save PDF to instance directory
+        instance_dir = current_app.instance_path
+        os.makedirs(instance_dir, exist_ok=True)
+        pdf_filename = f'garden_report_{year}.pdf'
+        pdf_path = os.path.join(instance_dir, pdf_filename)
+
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf)
+
+        # Record saved report
+        saved_report = SavedReport(
+            year=year,
+            format='pdf',
+            file_path=pdf_path,
+            notes=f'Generated on {datetime.utcnow().strftime("%Y-%m-%d %H:%M")}'
+        )
+        db.session.add(saved_report)
+        db.session.commit()
+
+        # Send file as response
+        return Response(
+            pdf,
+            mimetype='application/pdf',
+            headers={'Content-Disposition': f'attachment;filename={pdf_filename}'}
+        )
+
+    @app.route('/reports/saved')
+    def saved_reports_list():
+        """List all saved reports"""
+        reports = SavedReport.query.order_by(SavedReport.generated_at.desc()).all()
+        return render_template('reports/saved.html', reports=reports)
+
+    @app.route('/reports/<int:year>/generate-pdf')
+    def generate_pdf_report(year):
+        """Generate and save a PDF report (without immediate download)"""
+        from weasyprint import HTML
+
+        plantings = Planting.query.filter_by(year=year).options(
+            db.joinedload(Planting.variety),
+            db.joinedload(Planting.harvests)
+        ).order_by(Planting.planting_date).all()
+
+        total_quantity = sum(p.quantity for p in plantings)
+        total_varieties = len(set(p.variety_id for p in plantings))
+
+        html_string = render_template(
+            'reports/pdf_year.html',
+            year=year,
+            plantings=plantings,
+            total_quantity=total_quantity,
+            total_varieties=total_varieties,
+            datetime=datetime
+        )
+
+        pdf = HTML(string=html_string).write_pdf()
+
+        instance_dir = current_app.instance_path
+        os.makedirs(instance_dir, exist_ok=True)
+        pdf_filename = f'garden_report_{year}_{datetime.utcnow().strftime("%Y%m%d_%H%M%S")}.pdf'
+        pdf_path = os.path.join(instance_dir, pdf_filename)
+
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf)
+
+        saved_report = SavedReport(
+            year=year,
+            format='pdf',
+            file_path=pdf_path,
+            notes=f'Generated manually on {datetime.utcnow().strftime("%Y-%m-%d %H:%M")}'
+        )
+        db.session.add(saved_report)
+        db.session.commit()
+
+        flash(f'PDF report for {year} generated and saved.', 'success')
+        return redirect(url_for('saved_reports_list'))
+
+    # Notification Settings
+    @app.route('/notifications/settings', methods=['GET', 'POST'])
+    def notification_settings():
+        """Manage notification email settings"""
+        settings = NotificationSetting.query.first()
+        if not settings:
+            settings = NotificationSetting(
+                email=current_app.config.get('MAIL_DEFAULT_SENDER', 'gardener@example.com'),
+                days_before=1,
+                enabled=True
+            )
+            db.session.add(settings)
+            db.session.commit()
+
+        if request.method == 'POST':
+            email = request.form.get('email', '').strip()
+            days_before = request.form.get('days_before', type=int, default=1)
+            enabled = request.form.get('enabled') == 'on'
+
+            settings.email = email
+            settings.days_before = days_before
+            settings.enabled = enabled
+
+            try:
+                db.session.commit()
+                flash('Notification settings updated!', 'success')
+            except Exception as e:
+                db.session.rollback()
+                flash(f'Error updating settings: {str(e)}', 'error')
+
+        return render_template('notifications/settings.html', settings=settings)
+
+    @app.route('/notifications/check')
+    def notifications_check():
+        """Check for upcoming sowings and send notifications (called by cron)"""
+        from flask_mail import Message
+
+        # Get settings
+        settings = NotificationSetting.query.first()
+        if not settings or not settings.enabled:
+            return {'status': 'disabled', 'message': 'Notifications are disabled'}, 200
+
+        # Get current date and calculate target range
+        today = date.today()
+        
+        # Find all planting plans that are due in the next N days
+        upcoming_plans = YearlyPlan.query.filter(
+            YearlyPlan.status == 'finalized',
+            YearlyPlan.planned_sowing_date >= today,
+            YearlyPlan.planned_sowing_date <= today + timedelta(days=settings.days_before)
+        ).all()
+
+        notifications_sent = 0
+
+        for plan in upcoming_plans:
+            # Check if we already sent a notification for this plan recently
+            recent_log = NotificationLog.query.filter(
+                NotificationLog.yearly_plan_id == plan.id,
+                NotificationLog.notification_type == 'sowing',
+                NotificationLog.sent_at >= datetime.utcnow() - timedelta(days=1)
+            ).first()
+            
+            if recent_log:
+                continue  # Already sent recently
+
+            try:
+                msg = Message(
+                    subject=f"Gartenplanner: Sowing Reminder - {plan.variety.name}",
+                    recipients=[settings.email],
+                    html=f"""
+                    <h2>Sowing Reminder</h2>
+                    <p>It's time to sow <strong>{plan.variety.name}</strong> ({plan.variety.plant_family or 'Unknown family'}).</p>
+                    <ul>
+                        <li><strong>Planned Sowing Date:</strong> {plan.planned_sowing_date.strftime('%Y-%m-%d')}</li>
+                        <li><strong>Planned Quantity:</strong> {plan.planned_quantity}</li>
+                        <li><strong>Notes:</strong> {plan.notes or 'None'}</li>
+                    </ul>
+                    <p>This reminder is {settings.days_before} day(s) before the planned sowing date.</p>
+                    """
+                )
+                mail.send(msg)
+                
+                # Log successful notification
+                log = NotificationLog(
+                    yearly_plan_id=plan.id,
+                    notification_type='sowing',
+                    status='sent'
+                )
+                db.session.add(log)
+                notifications_sent += 1
+            except Exception as e:
+                # Log error
+                log = NotificationLog(
+                    yearly_plan_id=plan.id,
+                    notification_type='sowing',
+                    status='failed',
+                    error_message=str(e)
+                )
+                db.session.add(log)
+
+        db.session.commit()
+
+        return {
+            'status': 'ok',
+            'notifications_sent': notifications_sent,
+            'total_checked': len(upcoming_plans)
+        }, 200
+
+    # CLI Commands
+    @app.cli.command('send-year-end')
+    def send_year_end_email():
+        """Send year-end summary email to all users with opted-in users"""
+        from flask_mail import Message
+        from sqlalchemy.orm import joinedload
+
+        # Get notification settings
+        settings = NotificationSetting.query.first()
+        if not settings or not settings.enabled:
+            print('Notifications are disabled. Enable them in settings first.')
+            return
+
+        # Get previous year
+        current_year = datetime.utcnow().year
+        previous_year = current_year - 1
+
+        # Get all plantings from previous year with variety and harvest data
+        plantings = Planting.query.filter_by(year=previous_year).options(
+            joinedload(Planting.variety),
+            joinedload(Planting.harvests)
+        ).order_by(Planting.planting_date).all()
+
+        if not plantings:
+            print(f'No plantings found for {previous_year}. Nothing to report.')
+            return
+
+        # Generate summary statistics
+        total_quantity = sum(p.quantity for p in plantings)
+        total_varieties = len(set(p.variety_id for p in plantings))
+        
+        # Build HTML email
+        html_content = f"""
+        <html>
+        <body>
+            <h2>Gartenplanner - Year-End Summary {previous_year}</h2>
+            <p>Here's your gardening summary for {previous_year}:</p>
+            <ul>
+                <li><strong>Total Varieties Planted:</strong> {total_varieties}</li>
+                <li><strong>Total Plants/Seeds:</strong> {total_quantity}</li>
+                <li><strong>Total Plantings:</strong> {len(plantings)}</li>
+            </ul>
+            <h3>Planting Details</h3>
+            <table border="1" cellpadding="5" cellspacing="0">
+                <tr><th>Variety</th><th>Quantity</th><th>Planting Date</th><th>Harvest Notes</th></tr>
+        """
+        
+        for planting in plantings:
+            harvest_summary = ', '.join(h.notes or 'No notes' for h in planting.harvests) if planting.harvests else 'No harvest recorded'
+            html_content += f"""
+                <tr>
+                    <td>{planting.variety.name}</td>
+                    <td>{planting.quantity}</td>
+                    <td>{planting.planting_date.strftime('%Y-%m-%d')}</td>
+                    <td>{harvest_summary}</td>
+                </tr>
+            """
+        
+        html_content += """
+            </table>
+            <p>Thank you for using Gartenplanner!</p>
+        </body>
+        </html>
+        """
+
+        # Send email
+        try:
+            msg = Message(
+                subject=f"Gartenplanner Year-End Summary {previous_year}",
+                recipients=[settings.email],
+                html=html_content
+            )
+            mail.send(msg)
+            print(f'Year-end email sent successfully to {settings.email}')
+        except Exception as e:
+            print(f'Failed to send year-end email: {str(e)}')
+
     return app
+
+def update_variety_harvest_stats(variety_id):
+    """Update the average days-to-harvest for a variety based on all its harvests"""
+    # This function may be called within an existing transaction, so don't create a new one
+    variety = Variety.query.get(variety_id)
+    if not variety:
+        return
+
+    # Get all harvests for this variety (through any planting)
+    harvests = Harvest.query.join(
+        Planting, Harvest.planting_id == Planting.id
+    ).filter(
+        Planting.variety_id == variety_id
+    ).all()
+
+    if harvests:
+        total_days = sum(h.get_days_to_harvest() for h in harvests if h.get_days_to_harvest() is not None)
+        count = sum(1 for h in harvests if h.get_days_to_harvest() is not None)
+        if count > 0:
+            variety.days_to_harvest_actual_avg = total_days / count
+        else:
+            variety.days_to_harvest_actual_avg = None
+    else:
+        variety.days_to_harvest_actual_avg = None
+    
+    # Variety is already in the session, just mark as dirty
+    # The caller's transaction will handle the commit
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(debug=True)

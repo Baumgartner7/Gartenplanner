@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Saved Reports - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="saved-reports-page">
+    <div class="page-header">
+        <h1>Saved Reports</h1>
+        <div class="header-actions">
+            <a href="{{ url_for('report_year', year=datetime.now().year) }}" class="btn">View Current Year</a>
+            <a href="{{ url_for('saved_reports_list') }}" class="btn btn-secondary">Refresh</a>
+        </div>
+    </div>
+
+    {% if reports %}
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Year</th>
+                    <th>Format</th>
+                    <th>Generated At</th>
+                    <th>Notes</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for report in reports %}
+                <tr>
+                    <td>{{ report.year }}</td>
+                    <td><span class="badge badge-{{ report.format }}">{{ report.format.upper() }}</span></td>
+                    <td>{{ report.generated_at.strftime('%Y-%m-%d %H:%M') if report.generated_at else 'Unknown' }}</td>
+                    <td>{{ report.notes or '' }}</td>
+                    <td>
+                        {% if report.file_path and report.format == 'pdf' %}
+                            <a href="{{ url_for('static', filename='reports/' + report.file_path.split('/')[-1]) }}" class="btn btn-small" target="_blank">View PDF</a>
+                        {% elif report.format == 'csv' %}
+                            <a href="{{ url_for('export_year', year=report.year) }}" class="btn btn-small">Download CSV</a>
+                        {% else %}
+                            <span class="muted">Unavailable</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <div class="empty-state">
+            <p>No saved reports yet.</p>
+            <a href="{{ url_for('report_year', year=datetime.now().year) }}" class="btn btn-primary">Create a Report</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Notification Settings - Gartenplanner{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <h1>Notification Settings</h1>
+
+    <div class="settings-form">
+        <form method="POST" action="{{ url_for('notification_settings') }}">
+            <div class="form-group">
+                <label for="email">Email Address</label>
+                <input type="email" id="email" name="email" value="{{ settings.email }}" required class="form-input">
+                <p class="form-help">Notifications will be sent to this email address.</p>
+            </div>
+
+            <div class="form-group">
+                <label for="days_before">Days Before Sowing</label>
+                <input type="number" id="days_before" name="days_before" value="{{ settings.days_before }}" min="0" max="30" class="form-input">
+                <p class="form-help">How many days before the planned sowing date to send the reminder.</p>
+            </div>
+
+            <div class="form-group">
+                <label class="checkbox-label">
+                    <input type="checkbox" name="enabled" {% if settings.enabled %}checked{% endif %}>
+                    Enable Notifications
+                </label>
+                <p class="form-help">When enabled, reminders will be sent for finalized plans.</p>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Save Settings</button>
+                <a href="{{ url_for('report_year', year=datetime.now().year) }}" class="btn">Back to Report</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="settings-info">
+        <h2>How Notifications Work</h2>
+        <ul>
+            <li>Only <strong>finalized</strong> yearly plans trigger notifications.</li>
+            <li>Notifications are sent once per plan (duplicate prevention for 24 hours).</li>
+            <li>To enable automatic checks, set up a cron job to call <code>/notifications/check</code> daily.</li>
+            <li>Example cron: <code>0 8 * * * curl -s http://localhost:5000/notifications/check</code></li>
+        </ul>
+    </div>
+</div>
+{% endblock %}
