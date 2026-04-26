@@ -7,6 +7,7 @@ import csv
 import io
 import re
 import os
+import json
 
 mail = Mail()
 
@@ -698,7 +699,7 @@ def create_app():
         settings = NotificationSetting.query.first()
         if not settings:
             settings = NotificationSetting(
-                email=current_app.config.get('MAIL_DEFAULT_SENDER', 'gardener@example.com'),
+                emails=json.dumps([current_app.config.get('MAIL_DEFAULT_SENDER', 'gardener@example.com')]),
                 days_before=1,
                 enabled=True
             )
@@ -706,11 +707,14 @@ def create_app():
             db.session.commit()
 
         if request.method == 'POST':
-            email = request.form.get('email', '').strip()
+            emails_input = request.form.get('emails', '').strip()
             days_before = request.form.get('days_before', type=int, default=1)
             enabled = request.form.get('enabled') == 'on'
 
-            settings.email = email
+            # Parse emails (comma-separated)
+            emails_list = [email.strip() for email in emails_input.split(',') if email.strip()]
+            
+            settings.set_emails_list(emails_list)
             settings.days_before = days_before
             settings.enabled = enabled
 
@@ -759,7 +763,7 @@ def create_app():
             try:
                 msg = Message(
                     subject=f"Gartenplanner: Sowing Reminder - {plan.variety.name}",
-                    recipients=[settings.email],
+                    recipients=settings.get_emails_list(),
                     html=f"""
                     <h2>Sowing Reminder</h2>
                     <p>It's time to sow <strong>{plan.variety.name}</strong> ({plan.variety.plant_family or 'Unknown family'}).</p>
@@ -868,11 +872,11 @@ def create_app():
         try:
             msg = Message(
                 subject=f"Gartenplanner Year-End Summary {previous_year}",
-                recipients=[settings.email],
+                recipients=settings.get_emails_list(),
                 html=html_content
             )
             mail.send(msg)
-            print(f'Year-end email sent successfully to {settings.email}')
+            print(f'Year-end email sent successfully to {settings.get_emails_list()}')
         except Exception as e:
             print(f'Failed to send year-end email: {str(e)}')
 

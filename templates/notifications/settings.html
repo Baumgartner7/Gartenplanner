@@ -8,11 +8,11 @@
 
     <div class="settings-form">
         <form method="POST" action="{{ url_for('notification_settings') }}">
-            <div class="form-group">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" value="{{ settings.email }}" required class="form-input">
-                <p class="form-help">Notifications will be sent to this email address.</p>
-            </div>
+    <div class="form-group">
+        <label for="emails">Email Addresses (comma-separated)</label>
+        <input type="text" id="emails" name="emails" value="{{ settings.emails|join(', ') if settings.emails else '' }}" class="form-input">
+        <p class="form-help">Enter one or more email addresses separated by commas. Notifications will be sent to all addresses.</p>
+    </div>
 
             <div class="form-group">
                 <label for="days_before">Days Before Sowing</label>

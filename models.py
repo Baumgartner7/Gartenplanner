@@ -219,16 +219,32 @@ class NotificationSetting(db.Model):
     __tablename__ = 'notification_settings'
 
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(200), nullable=False, unique=True)
+    emails = db.Column(db.Text, nullable=False)  # JSON array of email addresses
     days_before = db.Column(db.Integer, nullable=False, default=1)
     enabled = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    def get_emails_list(self):
+        """Get list of email addresses"""
+        if not self.emails:
+            return []
+        try:
+            return json.loads(self.emails)
+        except (json.JSONDecodeError, TypeError):
+            # Fallback for old format (single email as string)
+            if self.emails.strip():
+                return [self.emails.strip()]
+            return []
+
+    def set_emails_list(self, emails_list):
+        """Set list of email addresses"""
+        self.emails = json.dumps(emails_list)
+
     def to_dict(self):
         return {
             'id': self.id,
-            'email': self.email,
+            'emails': self.get_emails_list(),
             'days_before': self.days_before,
             'enabled': self.enabled,
             'created_at': self.created_at.isoformat() if self.created_at else None
